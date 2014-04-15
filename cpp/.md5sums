@@ -1,0 +1,10 @@
+e2372cd06ebfff7644ac384ea4ad7f4a  main.cpp
+c99df9fa4ab0cd042eac42fcee6441c3  reconf
+fcf1ae6e00c836a3fe4286ff79efd291  BurstDeserializer.cpp
+1cd01cc0506337a92ad730e72e117ae5  BurstDeserializer_base.cpp
+586a37c79dd4a7fe824c07c3a7032b2b  BurstDeserializer_base.h
+280e09e24a4c1ac450e428f1bca57f03  configure.ac
+7f9fe41146022619f0a3c761f7500834  Makefile.am
+860a4e365f8bc4a0250f57b78002bbe6  Makefile.am.ide
+7c3dc3244de0dfb7170455f2c56471db  BurstDeserializer.h
+2edeb4570ba55b42155b992f38587fb6  build.sh
