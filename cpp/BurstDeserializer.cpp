@@ -4,11 +4,11 @@
  *
  * This file is part of REDHAWK Basic Components BurstDeserializer.
  *
- * REDHAWK Basic Components AmFmPmBasebandDemod is free software: you can redistribute it and/or modify it under the terms of
+ * REDHAWK Basic Components BurstDeserializer is free software: you can redistribute it and/or modify it under the terms of
  * the GNU Lesser General Public License as published by the Free Software Foundation, either
  * version 3 of the License, or (at your option) any later version.
  *
- * REDHAWK Basic Components AmFmPmBasebandDemod is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+ * REDHAWK Basic Components BurstDeserializer is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
  * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
  * PURPOSE.  See the GNU Lesser General Public License for more details.
  *
@@ -28,8 +28,10 @@
 PREPARE_LOGGING(BurstDeserializer_i)
 
 BurstDeserializer_i::BurstDeserializer_i(const char *uuid, const char *label) :
-    BurstDeserializer_base(uuid, label)
+    BurstDeserializer_base(uuid, label),
+    flushStreams(false)
 {
+	addPropertyChangeListener("transpose", this, &BurstDeserializer_i::transposeChanged);
 }
 
 BurstDeserializer_i::~BurstDeserializer_i()
@@ -170,51 +172,225 @@ BurstDeserializer_i::~BurstDeserializer_i()
         //Add to BurstDeserializer.h
         void scaleChanged(const float* oldValue, const float* newValue);
         
+
+void BurstDeserializer_i::updateSriTranspose(unsigned int complex_offset, bulkio::InDoublePort::dataTransfer* tmp)
+{
+		size_t nstreams = tmp->dataBuffer.size() / (tmp->SRI.subsize * complex_offset);
+		for (unsigned int i = 0; i < nstreams; i++,streamCount++) {
+			std::ostringstream newstreamid;
+			newstreamid << tmp->streamID << "_" << streamCount;
+			BULKIO::StreamSRI newsri = tmp->SRI;
+			newsri.streamID = newstreamid.str().c_str();
+			this->output->pushSRI(newsri);
+		}
+}
         
 ************************************************************************************************/
 int BurstDeserializer_i::serviceFunction()
 {
-    LOG_DEBUG(BurstDeserializer_i, "serviceFunction() example log message");
-    
     bulkio::InDoublePort::dataTransfer *tmp = this->input->getPacket(-1);
     if (tmp == NULL)
     	return NOOP;
 
-    unsigned int complex_offset;
-    if (tmp->SRI.mode == 0) {
-    	complex_offset = 1;
-    } else {
-    	complex_offset = 2;
-    }
+    bool thisTranspose=transpose;
 
-    if (tmp->sriChanged) {
-    	if (tmp->SRI.subsize != 0) {
-    		unsigned int nstreams = tmp->dataBuffer.size()/(tmp->SRI.subsize*complex_offset);
-    		for (unsigned int i=0; i<nstreams; i++) {
-    			std::ostringstream newstreamid;
-    			newstreamid<<tmp->streamID<<"_"<<i;
-    			BULKIO::StreamSRI newsri = tmp->SRI;
-    			newsri.streamID = newstreamid.str().c_str();
-    			this->output->pushSRI(newsri);
-    		}
-    	} else {
-    		this->output->pushSRI(tmp->SRI);
-    	}
-    }
-	if (tmp->SRI.subsize != 0) {
-		unsigned int nstreams = tmp->dataBuffer.size()/(tmp->SRI.subsize*complex_offset);
-		for (unsigned int i=0; i<nstreams; i++) {
-			std::vector<double> data;
-                        data.assign(tmp->dataBuffer.begin()+(tmp->SRI.subsize*i*complex_offset),tmp->dataBuffer.begin()+(tmp->SRI.subsize*(i+1)*complex_offset));
-			std::ostringstream newstreamid;
-			newstreamid<<tmp->streamID<<"_"<<i;
-			this->output->pushPacket(data,tmp->T,tmp->EOS,newstreamid.str());
-		}
-	} else {
-		this->output->pushPacket(tmp->dataBuffer,tmp->T,tmp->EOS,tmp->streamID);
+	if (tmp->inputQueueFlushed) {
+		LOG_WARN(BurstDeserializer_i, "input queue flushed - data has been thrown on the floor.");
+		flushStreams=true;
 	}
 
+	if (flushStreams) {
+		LOG_DEBUG(BurstDeserializer_i, "flushing streams");
+		std::vector<double> data;
+		//clear any active streams and push EOS for each stream
+		for (state_type::iterator i = activeStreams.begin(); i!=activeStreams.end(); i++) {
+			for (std::vector<std::string>::iterator outID = i->second.outputIDs.begin(); outID !=i->second.outputIDs.end(); outID++) {
+				this->output->pushPacket(data,tmp->T,true,*outID);
+			}
+		}
+		activeStreams.clear();
+		flushStreams=false;
+	}
+
+    //ensure this is run at least once the very first time
+	state_type::iterator state = activeStreams.find(tmp->streamID);
+	if (state == activeStreams.end())
+	{
+		LOG_DEBUG(BurstDeserializer_i, "New input stream:  " << tmp->streamID);
+		state_type::value_type vt(tmp->streamID, StateStruct());
+		state = activeStreams.insert(activeStreams.end(),vt);
+		state->second.streamCount=0;
+		state->second.adjustXStart = (tmp->SRI.xunits==BULKIO::UNITS_TIME && tmp->SRI.yunits==BULKIO::UNITS_TIME);
+	}
+
+	//double check to ensure subsize changes are checked explicitly
+	bool subsizeRefresh = thisTranspose && (tmp->SRI.subsize != state->second.outputIDs.size());
+
+	//update state if we are brand new or things have chagned
+	if (tmp->sriChanged || subsizeRefresh || state->second.streamCount==0) {
+		updateState(subsizeRefresh, state->second, thisTranspose, tmp);
+	}
+
+	//now we will do sri pushes and output data
+	if (tmp->SRI.subsize > 0) {
+		//typical case - we have a valid subsize
+	    unsigned int complex_offset;
+	    if (tmp->SRI.mode == 0) {
+	    	complex_offset = 1;
+	    } else {
+	    	complex_offset = 2;
+	    }
+	    //number of elements (including two floating point numbers per element if data is complex)
+	    size_t numElements = tmp->dataBuffer.size()/complex_offset;
+
+	    if (numElements % tmp->SRI.subsize !=0)
+	    	LOG_WARN(BurstDeserializer_i, "numElements "<<numElements <<" and subsize "<< tmp->SRI.subsize<<" does not yield an integer multiple of frames.  Something wierd is going on with the data packet size");
+
+		if (state->second.adjustXStart && (tmp->SRI.xstart!=0 || tmp->SRI.ystart!=0) && (!thisTranspose || tmp->sriChanged)) {
+		    //adjust xstart if required prior to any sri pushes
+			if (tmp->SRI.xstart !=0) {
+				state->second.SRI.xstart=tmp->SRI.xstart;
+				if ((tmp->SRI.ystart!=0) && (tmp->SRI.ystart!= tmp->SRI.xstart))
+					LOG_WARN(BurstDeserializer_i, "xstart & ystart values differ for time vs time raster.  Using xstart value");
+			} else
+				state->second.SRI.xstart=tmp->SRI.ystart;
+		}
+
+		if (thisTranspose)
+			pushTransposed(numElements, complex_offset, state, tmp);
+		else
+			pushUnTransposed(complex_offset, state, tmp);
+
+	} else {
+		if (tmp->sriChanged)
+			this->output->pushSRI(tmp->SRI);
+		this->output->pushPacket(tmp->dataBuffer,tmp->T,tmp->EOS,tmp->streamID);
+	}
 	delete tmp;
 
     return NORMAL;
 }
+
+void BurstDeserializer_i::transposeChanged(const bool *oldValue, const bool *newValue)
+{
+	LOG_DEBUG(BurstDeserializer_i, "transposed changed from "<< *oldValue << " to " << *newValue);
+	flushStreams = (*oldValue!=*newValue);
+}
+
+template<typename T>
+void BurstDeserializer_i::demuxData(std::vector<double>& input, std::vector<T>& output, size_t colNum, size_t subsize)
+{
+	//take every n elements starting with columnNum and copy them to output
+	std::vector<T>* inVec = (std::vector<T>*) &(input);
+	size_t outSize =inVec->size()/subsize;
+	output.clear();
+	output.reserve(outSize);
+
+	for (typename std::vector<T>::iterator i = inVec->begin()+colNum; i < inVec->end(); i+=subsize)
+		output.push_back(*i);
+}
+
+std::string BurstDeserializer_i::getStreamID(state_type::iterator state)
+{
+	//get the next streamID for this state
+	std::ostringstream newstreamid;
+	newstreamid<<state->first<<"_"<<state->second.streamCount;
+	state->second.streamCount++;
+	return newstreamid.str();
+}
+
+void BurstDeserializer_i::updateState(bool subsizeRefresh,  StateStruct& state, bool thisTranspose, bulkio::InDoublePort::dataTransfer* tmp) {
+	LOG_DEBUG(BurstDeserializer_i, "updating SRI for stream:  " << tmp->streamID);
+	if (tmp->SRI.subsize >0 ){
+		//force an sri push later
+		tmp->sriChanged = true;
+		//if subsize has changed clear all streams and start over
+		if (subsizeRefresh) {
+			if (!state.outputIDs.empty()) {
+				std::vector<double> data;
+				LOG_DEBUG(BurstDeserializer_i,
+						"clearing out old streams due to subsize change");
+				for (std::vector<std::string>::iterator outID = state.outputIDs.begin(); outID != state.outputIDs.end(); outID++) {
+					this->output->pushPacket(data, tmp->T, true, *outID);
+				}
+				state.outputIDs.clear();
+			}
+			state.streamCount = 0;
+		}
+		//now update all the state SRI accordingly
+		state.SRI = tmp->SRI;
+		//now update our SRI to be what we need for the output values
+		if (thisTranspose) {
+			if (tmp->SRI.ydelta > 0)
+				state.SRI.xdelta = tmp->SRI.ydelta;
+			else {
+				state.SRI.xdelta = tmp->SRI.xdelta / tmp->SRI.subsize;
+				LOG_WARN(BurstDeserializer_i, "ydelta "<<tmp->SRI.ydelta <<" is invalid.  Using best guess "<<state.SRI.xdelta);
+			}
+			state.SRI.xstart = tmp->SRI.ystart;
+			state.SRI.xunits = tmp->SRI.yunits;
+			//if both units are time then we will need to adjust the xstart for each particular stream
+		}
+		//reset all the subsize information
+		state.SRI.subsize = 0;
+		state.SRI.ystart = 0;
+		state.SRI.ydelta = 0;
+		state.SRI.yunits = BULKIO::UNITS_NONE;
+	}
+	else
+		LOG_WARN(BurstDeserializer_i, "burst deserializer found stream "<< tmp->SRI.streamID<<" with subsize "<<tmp->SRI.subsize<<".  Treating as pass threw");
+
+}
+
+void BurstDeserializer_i::pushTransposed(size_t numElements, unsigned int complex_offset,
+		state_type::iterator state, bulkio::InDoublePort::dataTransfer* tmp) {
+	// we are not transposing the data
+	std::vector<double> data;
+	data.reserve(numElements * complex_offset);
+	std::vector<std::complex<double> >* dataCx = (std::vector<std::complex<double> >*) (&(data));
+	bool sriPush;
+	for (size_t colNum = 0; colNum != tmp->SRI.subsize; colNum++) {
+		if ((tmp->SRI.mode == 0))
+			demuxData(tmp->dataBuffer, data, colNum, tmp->SRI.subsize);
+		else
+			demuxData(tmp->dataBuffer, *dataCx, colNum, tmp->SRI.subsize);
+
+		sriPush = tmp->sriChanged;
+		//make sure we have enough active streamIDs.  If not start a new one here and force a sri push
+		if (state->second.outputIDs.size() == colNum) {
+			state->second.outputIDs.push_back(getStreamID(state));
+			sriPush = true;
+		}
+		if (sriPush) {
+			//push sri if we need to do so
+			state->second.SRI.streamID = state->second.outputIDs[colNum].c_str();
+			this->output->pushSRI(state->second.SRI);
+			if (state->second.adjustXStart)
+				state->second.SRI.xstart += tmp->SRI.xdelta;
+		}
+		this->output->pushPacket(data, tmp->T, tmp->EOS,
+				state->second.outputIDs[colNum]);
+	}
+}
+
+void BurstDeserializer_i::pushUnTransposed(unsigned int complex_offset,
+		state_type::iterator state,
+		bulkio::InDoublePort::dataTransfer* tmp) {
+	// we are transposing the data
+	std::vector<double> data;
+	size_t stride = tmp->SRI.subsize * complex_offset;
+	unsigned int nstreams = tmp->dataBuffer.size()/stride;
+	data.reserve(stride);
+	for (unsigned int i = 0; i!=nstreams; i++)
+	{
+		data.assign(tmp->dataBuffer.begin() + (i * stride), tmp->dataBuffer.begin() + ((i + 1) * stride));
+		//we always create a new stream for each push and send eos for each new stream
+		std::string streamID = getStreamID(state);
+		state->second.SRI.streamID = streamID.c_str();
+		this->output->pushSRI(state->second.SRI);
+		this->output->pushPacket(data, tmp->T, true, streamID);
+		if (state->second.adjustXStart)
+			state->second.SRI.xstart += tmp->SRI.ydelta;
+	}
+}
+

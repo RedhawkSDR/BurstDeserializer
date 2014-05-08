@@ -4,20 +4,20 @@
 # 
 # This file is part of REDHAWK Basic Components BurstDeserializer.
 # 
-# REDHAWK Basic Components AmFmPmBasebandDemod is free software: you can redistribute it and/or modify it under the terms of 
+# REDHAWK Basic Components BurstDeserializer is free software: you can redistribute it and/or modify it under the terms of 
 # the GNU Lesser General Public License as published by the Free Software Foundation, either 
 # version 3 of the License, or (at your option) any later version.
 # 
-# REDHAWK Basic Components AmFmPmBasebandDemod is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; 
+# REDHAWK Basic Components BurstDeserializer is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; 
 # without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR 
 # PURPOSE.  See the GNU Lesser General Public License for more details.
 # 
 # You should have received a copy of the GNU Lesser General Public License along with this 
 # program.  If not, see http://www.gnu.org/licenses/.
 #
+
 AC_INIT(BurstDeserializer, 1.0.0)
 AM_INIT_AUTOMAKE(nostdinc)
-
 
 AC_PROG_CC
 AC_PROG_CXX
@@ -31,11 +31,13 @@ m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 
 # Dependencies
 export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:/usr/local/lib/pkgconfig"
-PKG_CHECK_MODULES([PROJECTDEPS], [ossie >= 1.9 omniORB4 >= 4.1.0  ])
-PKG_CHECK_MODULES([INTERFACEDEPS], [bulkio >= 1.0 bulkioInterfaces >= 1.9])
+PKG_CHECK_MODULES([PROJECTDEPS], [ossie >= 1.10 omniORB4 >= 4.1.0  ])
+PKG_CHECK_MODULES([INTERFACEDEPS], [bulkio >= 1.10])
 OSSIE_ENABLE_LOG4CXX
 AX_BOOST_BASE([1.41])
+AX_BOOST_SYSTEM
 AX_BOOST_THREAD
+AX_BOOST_REGEX
 
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT

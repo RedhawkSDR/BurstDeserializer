@@ -17,4 +17,11 @@ You should have received a copy of the GNU Lesser General Public License along w
 program.  If not, see http://www.gnu.org/licenses/.
 -->
 <!DOCTYPE properties PUBLIC "-//JTRS//DTD SCA V2.2.2 PRF//EN" "properties.dtd">
-<properties/>
+<properties>
+  <simple id="transpose" mode="readwrite" type="boolean">
+    <description>If transpose is True, data is demuxed so each index within an input frame is a unique streamID.  If transpose is false, the data is output contigouously and there is one unique streamID per input frame.</description>
+    <value>True</value>
+    <kind kindtype="configure"/>
+    <action type="external"/>
+  </simple>
+</properties>

@@ -22,6 +22,19 @@ program.  If not, see http://www.gnu.org/licenses/.
   <author>
     <name>null</name>
   </author>
+  <description>BurstDeserializer demuxes framed data into seperate unfrmaed output streams.   
+
+Framed data can be visualized as a matrix.  The sri.subsize determines the rows of the matrix, which are associated with the &quot;x&quot; direction.  The columns are associated with the &quot;y&quot; direction.  This yields the following equation which should hold for framed data:
+
+numFrames= pktSize/sri.subsize;
+
+numFrames is the number of rows of the matrix, and sri.subsize is the number of columns in the matrix.  
+
+If the transpose property is set to true, the burst delimeter outputs one stream per column.  Thus, each packet yields sri.subsize unique output streams.  If transpose is set to false, the burst delimeter outputs one stream per row. Thus, each packet yields numFrames unique outputStreams.
+
+Because the pktSize can change from packetToPacket, the number of output streams can also change per packet when transpose is set to false.  Thus, the BurstDeserializer is designed so that each frame of each packet becomes a unique streamID when transpose is set to false.
+
+When transpose is set to true, the newStreams are created only when the subsize changes.  This is the typical use case for steady-state processing in most real-time systems.</description>
   <propertyfile type="PRF">
     <localfile name="BurstDeserializer.prf.xml"/>
   </propertyfile>

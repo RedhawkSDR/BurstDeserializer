@@ -4,17 +4,17 @@
 # 
 # This file is part of REDHAWK Basic Components BurstDeserializer.
 # 
-# REDHAWK Basic Components AmFmPmBasebandDemod is free software: you can redistribute it and/or modify it under the terms of 
+# REDHAWK Basic Components BurstDeserializer is free software: you can redistribute it and/or modify it under the terms of 
 # the GNU Lesser General Public License as published by the Free Software Foundation, either 
 # version 3 of the License, or (at your option) any later version.
 # 
-# REDHAWK Basic Components AmFmPmBasebandDemod is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; 
+# REDHAWK Basic Components BurstDeserializer is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; 
 # without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR 
 # PURPOSE.  See the GNU Lesser General Public License for more details.
 # 
 # You should have received a copy of the GNU Lesser General Public License along with this 
 # program.  If not, see http://www.gnu.org/licenses/.
-#
+
 ossieName = BurstDeserializer
 bindir = $(prefix)/dom/components/BurstDeserializer/cpp/
 bin_PROGRAMS = BurstDeserializer
@@ -42,7 +42,7 @@ distclean-local:
 # you wish to manually control these options.
 include $(srcdir)/Makefile.am.ide
 BurstDeserializer_SOURCES = $(redhawk_SOURCES_auto)
-BurstDeserializer_LDADD = $(PROJECTDEPS_LIBS) $(BOOST_LDFLAGS) $(BOOST_THREAD_LIB) $(INTERFACEDEPS_LIBS) $(redhawk_LDADD_auto)
+BurstDeserializer_LDADD = $(PROJECTDEPS_LIBS) $(BOOST_LDFLAGS) $(BOOST_THREAD_LIB) $(BOOST_REGEX_LIB) $(BOOST_SYSTEM_LIB) $(INTERFACEDEPS_LIBS) $(redhawk_LDADD_auto)
 BurstDeserializer_CXXFLAGS = -Wall $(PROJECTDEPS_CFLAGS) $(BOOST_CPPFLAGS) $(INTERFACEDEPS_CFLAGS) $(redhawk_INCLUDES_auto)
 BurstDeserializer_LDFLAGS = -Wall $(redhawk_LDFLAGS_auto)
 
