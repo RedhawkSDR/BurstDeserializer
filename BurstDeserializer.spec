@@ -31,7 +31,7 @@ Prefix:         %{_prefix}
 
 Name:           BurstDeserializer
 Version:        1.0.0
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        Component %{name}
 
 Group:          REDHAWK/Components
